@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project xmlns="http://maven.apache.org/POM/4.0.0"
-		 xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-		 xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
 	<modelVersion>4.0.0</modelVersion>
 	<parent>
 		<groupId>org.springframework.experimental</groupId>
@@ -9,131 +9,194 @@
 		<version>0.11.2-SNAPSHOT</version>
 		<relativePath>../maven-parent/pom.xml</relativePath>
 	</parent>
+	<groupId>org.springframework.experimental.spring-native.samples</groupId>
 	<artifactId>data-jpa</artifactId>
 	<version>0.0.1-SNAPSHOT</version>
+	<packaging>pom</packaging>
 
 	<properties>
 		<java.version>11</java.version>
+		<!-- Customize Spring Boot classifier, useful in order to avoid a clash between Spring Boot repackaging and native-image-maven-plugin -->
+		<repackage.classifier/>
+
+		<!-- `tiny` builder allows small footprint and reduced surface attack, you can also use `base` (the default) or `full` builders to have more tooling available in the image for an improved developer experience -->
+		<image.builder>paketobuildpacks/builder:base</image.builder>
+		
+		<bp.native.image>false</bp.native.image>
+
+		<wavefront.version>2.2.0</wavefront.version>
+		<spring-cloud.version>2021.0.0</spring-cloud.version>
+		<native.buildtools.version>0.9.9</native.buildtools.version>
 	</properties>
 
-	<dependencies>
-		<dependency>
-			<groupId>org.springframework.experimental</groupId>
-			<artifactId>spring-native</artifactId>
-		</dependency>
-		<dependency>
-			<groupId>org.springframework.boot</groupId>
-			<artifactId>spring-boot-starter-data-jpa</artifactId>
-		</dependency>
-		<dependency>
-			<groupId>org.springframework.boot</groupId>
-			<artifactId>spring-boot-starter-web</artifactId>
-			<exclusions>
-				<exclusion>
-					<groupId>org.apache.tomcat.embed</groupId>
-					<artifactId>tomcat-embed-core</artifactId>
-				</exclusion>
-				<exclusion>
-					<groupId>org.apache.tomcat.embed</groupId>
-					<artifactId>tomcat-embed-websocket</artifactId>
-				</exclusion>
-			</exclusions>
-		</dependency>
-		<dependency>
-			<groupId>org.apache.tomcat.experimental</groupId>
-			<artifactId>tomcat-embed-programmatic</artifactId>
-			<version>${tomcat.version}</version>
-		</dependency>
-		<dependency>
-			<groupId>org.springframework.boot</groupId>
-			<artifactId>spring-boot-configuration-processor</artifactId>
-			<optional>true</optional>
-		</dependency>
-		<dependency>
-			<groupId>org.springframework.boot</groupId>
-			<artifactId>spring-boot-starter-test</artifactId>
-			<scope>test</scope>
-		</dependency>
-		<dependency>
-			<groupId>org.springframework.boot</groupId>
-			<artifactId>spring-boot-starter-webflux</artifactId>
-			<scope>test</scope>
-		</dependency>
-		<dependency>
-			<groupId>org.junit.jupiter</groupId>
-			<artifactId>junit-jupiter-engine</artifactId>
-			<scope>test</scope>
-		</dependency>
-	</dependencies>
+	<modules>
+		<module>domain</module>
+		<module>api</module>
+		<module>hierarchy</module>
+	</modules>
+
+	<dependencyManagement>
+		<dependencies>
+			<dependency>
+				<groupId>org.springframework.experimental</groupId>
+				<artifactId>data-jpa-domain</artifactId>
+				<version>${project.version}</version>
+			</dependency>
+			<dependency>
+				<groupId>org.springframework.experimental</groupId>
+				<artifactId>data-jpa-hierarchy</artifactId>
+				<version>${project.version}</version>
+			</dependency>
+		</dependencies>
+	</dependencyManagement>
+
+	<!-- Check out the parent POM for the plugins configuration -->
+	<build>
+		<pluginManagement>
+			<plugins>
+				<plugin>
+					<groupId>org.springframework.boot</groupId>
+					<artifactId>spring-boot-maven-plugin</artifactId>
+					<configuration>
+						<classifier>${repackage.classifier}</classifier>
+						<image>
+							<builder>${builder}</builder>
+							<env>
+								<BP_NATIVE_IMAGE>${bp.native.image}</BP_NATIVE_IMAGE>
+							</env>
+						</image>
+					</configuration>
+				</plugin>
+				<plugin>
+					<groupId>org.springframework.experimental</groupId>
+					<artifactId>spring-aot-maven-plugin</artifactId>
+					<version>0.11.2-SNAPSHOT</version>
+					<executions>
+						<execution>
+							<id>generate</id>
+							<goals>
+								<goal>generate</goal>
+							</goals>
+						</execution>
+						<execution>
+							<id>test-generate</id>
+							<goals>
+								<goal>test-generate</goal>
+							</goals>
+						</execution>
+					</executions>
+				</plugin>
+				<plugin>
+					<groupId>org.graalvm.buildtools</groupId>
+					<artifactId>native-maven-plugin</artifactId>
+					<version>${native.buildtools.version}</version>
+					<extensions>true</extensions>
+					<executions>
+						<execution>
+							<id>build-native</id>
+							<goals>
+								<goal>build</goal>
+							</goals>
+							<phase>package</phase>
+						</execution>
+						<execution>
+							<id>test-native</id>
+							<goals>
+								<goal>test</goal>
+							</goals>
+							<phase>test</phase>
+						</execution>
+					</executions>
+				</plugin>
+				<plugin>
+					<groupId>org.hibernate.orm.tooling</groupId>
+					<artifactId>hibernate-enhance-maven-plugin</artifactId>
+					<version>${hibernate.version}</version>
+				</plugin>
+			</plugins>
+		</pluginManagement>
+	</build>
 
 	<profiles>
+		<!-- Enable building a native image using a local installation of native-image with GraalVM native-maven-plugin -->
 		<profile>
-			<id>h2</id>
-			<activation>
-				<activeByDefault>true</activeByDefault>
-			</activation>
-			<dependencies>
-				<dependency>
-					<groupId>com.h2database</groupId>
-					<artifactId>h2</artifactId>
-					<scope>runtime</scope>
-				</dependency>
-			</dependencies>
+			<id>native-image</id>
+			<properties>
+				<repackage.classifier/>
+				<builder>paketobuildpacks/builder:tiny</builder>
+				<bp.native.image>true</bp.native.image>
+			</properties>
 		</profile>
 		<profile>
-			<id>hsqldb</id>
-			<activation>
-				<property>
-					<name>env.DB</name>
-					<value>hsqldb</value>
-				</property>
-			</activation>
+			<id>native</id>
+			<properties>
+				<!-- Avoid a clash between Spring Boot repackaging and native-maven-plugin -->
+				<repackage.classifier>exec</repackage.classifier>
+				<builder>paketobuildpacks/builder:tiny</builder>
+				<bp.native.image>true</bp.native.image>
+			</properties>
 			<dependencies>
+				<!-- Required with Maven Surefire 2.x -->
 				<dependency>
-					<groupId>org.hsqldb</groupId>
-					<artifactId>hsqldb</artifactId>
-					<scope>runtime</scope>
+					<groupId>org.junit.platform</groupId>
+					<artifactId>junit-platform-launcher</artifactId>
+					<scope>test</scope>
 				</dependency>
 			</dependencies>
 		</profile>
 	</profiles>
 
-
-	<!-- Check out the parent POM for the plugins configuration -->
-	<build>
-		<plugins>
-			<plugin>
-				<groupId>org.springframework.experimental</groupId>
-				<artifactId>spring-aot-maven-plugin</artifactId>
-				<configuration>
-					<removeSpelSupport>true</removeSpelSupport>
-					<removeYamlSupport>true</removeYamlSupport>
-				</configuration>
-			</plugin>
-			<plugin>
-				<groupId>org.springframework.boot</groupId>
-				<artifactId>spring-boot-maven-plugin</artifactId>
-			</plugin>
-			<plugin>
-				<groupId>org.hibernate.orm.tooling</groupId>
-				<artifactId>hibernate-enhance-maven-plugin</artifactId>
-				<version>${hibernate.version}</version>
-				<executions>
-					<execution>
-						<configuration>
-							<failOnError>true</failOnError>
-							<enableLazyInitialization>true</enableLazyInitialization>
-							<enableDirtyTracking>true</enableDirtyTracking>
-							<enableAssociationManagement>true</enableAssociationManagement>
-							<enableExtendedEnhancement>false</enableExtendedEnhancement>
-						</configuration>
-						<goals>
-							<goal>enhance</goal>
-						</goals>
-					</execution>
-				</executions>
-			</plugin>
-		</plugins>
-	</build>
+	<pluginRepositories>
+		<pluginRepository>
+			<id>spring-release</id>
+			<name>Spring release</name>
+			<url>https://repo.spring.io/release</url>
+			<snapshots>
+				<enabled>false</enabled>
+			</snapshots>
+		</pluginRepository>
+		<pluginRepository>
+			<id>spring-milestone</id>
+			<name>Spring milestone</name>
+			<url>https://repo.spring.io/milestone</url>
+			<snapshots>
+				<enabled>false</enabled>
+			</snapshots>
+		</pluginRepository>
+		<pluginRepository>
+			<id>spring-snapshot</id>
+			<name>Spring Snapshots</name>
+			<url>https://repo.spring.io/snapshot</url>
+			<releases>
+				<enabled>false</enabled>
+			</releases>
+		</pluginRepository>
+	</pluginRepositories>
+	<repositories>
+		<repository>
+			<id>spring-release</id>
+			<name>Spring release</name>
+			<url>https://repo.spring.io/release</url>
+			<snapshots>
+				<enabled>false</enabled>
+			</snapshots>
+		</repository>
+		<repository>
+			<id>spring-milestone</id>
+			<name>Spring milestone</name>
+			<url>https://repo.spring.io/milestone</url>
+			<snapshots>
+				<enabled>false</enabled>
+			</snapshots>
+		</repository>
+		<repository>
+			<id>spring-snapshot</id>
+			<name>Spring Snapshots</name>
+			<url>https://repo.spring.io/snapshot</url>
+			<releases>
+				<enabled>false</enabled>
+			</releases>
+		</repository>
+	</repositories>
 
 </project>
